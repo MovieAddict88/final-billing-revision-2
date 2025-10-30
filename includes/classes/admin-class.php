@@ -2159,13 +2159,59 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 
 		public function approveReconnectionPayment($id)
 		{
-			$request = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
-			if ($request->execute([$id])) {
+			try {
+				$this->dbh->beginTransaction();
+
 				$reconnection_request = $this->getReconnectionPaymentById($id);
+				if (!$reconnection_request) {
+					throw new Exception("Reconnection request not found");
+				}
+
+				$original_customer_id = $this->getDisconnectedCustomerOriginalId($reconnection_request->customer_id);
+				if (!$original_customer_id) {
+					throw new Exception("Original customer ID not found");
+				}
+
 				$this->reconnectCustomer($reconnection_request->customer_id);
+
+				$paymentRequest = $this->dbh->prepare(
+					"INSERT INTO payments (customer_id, employer_id, r_month, amount, balance, status, p_date, payment_method, reference_number) VALUES (?, ?, ?, ?, 0, 'Paid', NOW(), ?, ?)"
+				);
+				$paymentRequest->execute([
+					$original_customer_id,
+					$reconnection_request->employer_id,
+					'Reconnection Fee',
+					$reconnection_request->amount,
+					$reconnection_request->payment_method,
+					$reconnection_request->reference_number
+				]);
+				$payment_id = $this->dbh->lastInsertId();
+
+				// Insert into payment_history
+				$historyRequest = $this->dbh->prepare(
+					"INSERT INTO payment_history (payment_id, customer_id, employer_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())"
+				);
+				$historyRequest->execute([
+					$payment_id,
+					$original_customer_id,
+					$reconnection_request->employer_id,
+					'Reconnection Fee',
+					$reconnection_request->amount,
+					$reconnection_request->amount,
+					$reconnection_request->payment_method,
+					$reconnection_request->reference_number
+				]);
+
+				$updateRequest = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
+				$updateRequest->execute([$id]);
+
+				$this->dbh->commit();
 				return true;
+			} catch (Exception $e) {
+				$this->dbh->rollBack();
+				error_log("Error in approveReconnectionPayment: " . $e->getMessage());
+				return false;
 			}
-			return false;
 		}
 
 		public function rejectReconnectionPayment($id)
