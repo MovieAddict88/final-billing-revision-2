@@ -811,30 +811,41 @@ public function reconnectCustomer($disconnected_customer_id)
             throw new Exception("Disconnected customer not found");
         }
 
-        // Insert back into customers table
-        $request = $this->dbh->prepare("
-            INSERT INTO customers
-            (id, full_name, nid, address, conn_location, email, ip_address,
-             conn_type, package_id, contact, login_code, employer_id, due_date, remarks)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
+        // Check if a customer with the same NID already exists
+        $checkRequest = $this->dbh->prepare("SELECT id FROM customers WHERE nid = ?");
+        $checkRequest->execute([$customer->nid]);
+        $existingCustomer = $checkRequest->fetch();
 
-        $request->execute([
-            $customer->original_id,
-            $customer->full_name,
-            $customer->nid,
-            $customer->address,
-            $customer->conn_location,
-            $customer->email,
-            $customer->ip_address,
-            $customer->conn_type,
-            $customer->package_id,
-            $customer->contact,
-            $customer->login_code,
-            $customer->employer_id,
-            $customer->due_date,
-            $customer->remarks,
-        ]);
+        if ($existingCustomer) {
+            // Update the existing customer's record
+            $request = $this->dbh->prepare("
+                UPDATE customers SET
+                full_name = ?, address = ?, conn_location = ?, email = ?, ip_address = ?,
+                conn_type = ?, package_id = ?, contact = ?, login_code = ?, employer_id = ?,
+                due_date = ?, remarks = ?, dropped = 0
+                WHERE id = ?
+            ");
+            $request->execute([
+                $customer->full_name, $customer->address, $customer->conn_location, $customer->email,
+                $customer->ip_address, $customer->conn_type, $customer->package_id, $customer->contact,
+                $customer->login_code, $customer->employer_id, date('Y-m-d', strtotime('+30 days')),
+                $customer->remarks, $existingCustomer->id
+            ]);
+        } else {
+            // Insert back into customers table
+            $request = $this->dbh->prepare("
+                INSERT INTO customers
+                (id, full_name, nid, address, conn_location, email, ip_address,
+                 conn_type, package_id, contact, login_code, employer_id, due_date, remarks)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $request->execute([
+                $customer->original_id, $customer->full_name, $customer->nid, $customer->address,
+                $customer->conn_location, $customer->email, $customer->ip_address, $customer->conn_type,
+                $customer->package_id, $customer->contact, $customer->login_code, $customer->employer_id,
+                date('Y-m-d', strtotime('+30 days')), $customer->remarks
+            ]);
+        }
 
         // Delete from disconnected_customers table
         $request = $this->dbh->prepare("DELETE FROM disconnected_customers WHERE id = ?");
@@ -2058,6 +2069,16 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 			return false;
 		}
 
+		private function getDisconnectedCustomerOriginalId($disconnected_customer_id)
+		{
+			$request = $this->dbh->prepare("SELECT original_id FROM disconnected_customers WHERE id = ?");
+			if ($request->execute([$disconnected_customer_id])) {
+				$result = $request->fetch();
+				return $result ? $result->original_id : null;
+			}
+			return null;
+		}
+
 		public function approveReconnectionRequest($id)
 		{
 			try {
@@ -2067,8 +2088,40 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 				if (!$request) {
 					throw new Exception("Reconnection request not found");
 				}
+				$original_customer_id = $this->getDisconnectedCustomerOriginalId($request->customer_id);
+				if (!$original_customer_id) {
+					throw new Exception("Original customer ID not found");
+				}
 
 				$this->reconnectCustomer($request->customer_id);
+
+				$paymentRequest = $this->dbh->prepare(
+					"INSERT INTO payments (customer_id, employer_id, r_month, amount, balance, status, p_date, payment_method, reference_number) VALUES (?, ?, ?, ?, 0, 'Paid', NOW(), ?, ?)"
+				);
+				$paymentRequest->execute([
+					$original_customer_id,
+					$request->employer_id,
+					'Reconnection Fee',
+					$request->amount,
+					$request->payment_method,
+					$request->reference_number
+				]);
+				$payment_id = $this->dbh->lastInsertId();
+
+				// Insert into payment_history
+				$historyRequest = $this->dbh->prepare(
+					"INSERT INTO payment_history (payment_id, customer_id, employer_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())"
+				);
+				$historyRequest->execute([
+					$payment_id,
+					$original_customer_id,
+					$request->employer_id,
+					'Reconnection Fee',
+					$request->amount,
+					$request->amount,
+					$request->payment_method,
+					$request->reference_number
+				]);
 
 				$updateRequest = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
 				$updateRequest->execute([$id]);
@@ -2104,5 +2157,81 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 				return $request->fetch();
 			}
 			return false;
+		}
+
+		public function getReconnectionPaymentById($id)
+		{
+			$request = $this->dbh->prepare("SELECT * FROM reconnection_requests WHERE id = ?");
+			if ($request->execute([$id])) {
+				return $request->fetch();
+			}
+			return false;
+		}
+
+		public function approveReconnectionPayment($id)
+		{
+			try {
+				$this->dbh->beginTransaction();
+
+				$reconnection_request = $this->getReconnectionPaymentById($id);
+				if (!$reconnection_request) {
+					throw new Exception("Reconnection request not found");
+				}
+
+				$customer = $this->getCustomerInfo($reconnection_request->customer_id);
+				$original_customer_id = $customer ? $customer->id : $this->getDisconnectedCustomerOriginalId($reconnection_request->customer_id);
+
+				if (!$original_customer_id) {
+					throw new Exception("Original customer ID not found");
+				}
+
+				$this->reconnectCustomer($reconnection_request->customer_id);
+
+				$paymentRequest = $this->dbh->prepare(
+					"INSERT INTO payments (customer_id, employer_id, r_month, amount, balance, status, p_date, payment_method, reference_number) VALUES (?, ?, ?, ?, ?, 'Paid', NOW(), ?, ?)"
+				);
+				$paymentRequest->execute([
+					$original_customer_id,
+					$reconnection_request->employer_id,
+					'Reconnection Fee',
+					$reconnection_request->amount,
+					0, // balance
+					$reconnection_request->payment_method,
+					$reconnection_request->reference_number
+				]);
+				$payment_id = $this->dbh->lastInsertId();
+
+				// Insert into payment_history
+				$historyRequest = $this->dbh->prepare(
+					"INSERT INTO payment_history (payment_id, customer_id, employer_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
+				);
+				$historyRequest->execute([
+					$payment_id,
+					$original_customer_id,
+					$reconnection_request->employer_id,
+					'Reconnection Fee',
+					$reconnection_request->amount,
+					$reconnection_request->amount,
+					0, // balance_after
+					$reconnection_request->payment_method,
+					$reconnection_request->reference_number
+				]);
+
+				$updateRequest = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
+				$updateRequest->execute([$id]);
+
+				$this->dbh->commit();
+				return true;
+			} catch (Exception $e) {
+				$this->dbh->rollBack();
+				error_log("Error in approveReconnectionPayment: " . $e->getMessage());
+				return false;
+			}
+		}
+
+		public function rejectReconnectionPayment($id)
+		{
+			$request = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'rejected' WHERE id = ?");
+			return $request->execute([$id]);
 		}
 	}
