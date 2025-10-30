@@ -1,0 +1,133 @@
+/* Action buttons in tables */
+.btn-action {
+    width: 80px !important;
+    margin-bottom: 5px;
+}
+
+/* Global improvements for responsiveness across the app */
+/* Ensure long, unbroken strings (e.g., login codes) wrap inside table cells */
+.table th,
+.table td {
+    word-break: break-word;          /* break long words when needed */
+    overflow-wrap: anywhere;         /* allow wrapping in any point if necessary */
+    white-space: normal;             /* avoid nowrap from third-party styles */
+    vertical-align: middle;          /* better vertical alignment */
+    padding: 8px 12px;               /* consistent padding */
+}
+
+/* Override jquery.bootgrid.css's `white-space: nowrap` for table cells */
+.bootgrid-table td {
+    white-space: normal !important;
+}
+
+/* Make all responsive table containers horizontally scrollable on any viewport */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* Professional table styling */
+.table {
+    margin-bottom: 0;
+    font-size: 14px;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.table-bordered {
+    border: 1px solid #dee2e6;
+}
+
+.table-bordered th,
+.table-bordered td {
+    border: 1px solid #dee2e6;
+}
+
+/* Button styling for action column */
+.btn-edit, .btn-delete {
+    margin: 2px;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
+/* Avoid overlapping when columns get tight on medium screens */
+@media (max-width: 1199px) {
+    .content-wrapper .row [class*="col-"] {
+        margin-bottom: 15px;
+    }
+}
+
+/* Force vertical stacking of Employer Dashboard tables on laptop and larger widths */
+@media (min-width: 992px) {
+  .employer-stack-laptop > [class*="col-md-"] {
+    float: none !important;
+    width: 100% !important;
+    margin-bottom: 15px; /* spacing between stacked panels */
+  }
+}
+
+/* Allow nested content (like tables) to shrink inside Bootstrap columns without overflow */
+[class^="col-"][class*="col-"],
+.col-xs-12, .col-sm-12, .col-md-12, .col-lg-12,
+.col-xs-6, .col-sm-6, .col-md-6, .col-lg-6,
+.col-xs-9, .col-sm-9, .col-md-9, .col-lg-9,
+.col-xs-3, .col-sm-3, .col-md-3, .col-lg-3 {
+    min-width: 0; /* helps avoid content overflow within float columns */
+}
+
+/* Panel body: allow horizontal scroll for wide content; don't clip vertically */
+.panel .panel-body {
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+/* Mobile-specific table adjustments */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 12px;
+    }
+    
+    .table th,
+    .table td {
+        padding: 6px 8px;
+    }
+    
+    .btn-action {
+        width: 70px !important;
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+}
+
+/* Ensure table headers are visible during horizontal scroll */
+.table-responsive::-webkit-scrollbar {
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
