@@ -1982,14 +1982,19 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 		// 	return false;
 		// }
 
-		public function getDisconnectedCustomerInfo($id)
-		{
-			$request = $this->dbh->prepare("SELECT dc.*, p.balance FROM disconnected_customers dc LEFT JOIN payments p ON dc.original_id = p.customer_id WHERE dc.id = ? ORDER BY p.p_date DESC LIMIT 1");
-			if ($request->execute([$id])) {
-				return $request->fetch();
-			}
-			return false;
-		}
+public function getDisconnectedCustomerInfo($id)
+{
+    $request = $this->dbh->prepare("
+        SELECT dc.*, 
+               (SELECT SUM(balance) FROM payments WHERE customer_id = dc.original_id AND balance > 0) as balance
+        FROM disconnected_customers dc
+        WHERE dc.id = ?
+    ");
+    if ($request->execute([$id])) {
+        return $request->fetch();
+    }
+    return false;
+}
 
 		public function processReconnectionPayment($customer_id, $employer_id, $amount, $reference_number, $payment_method, $screenshot = null, $payment_date = null, $payment_time = null)
 		{
