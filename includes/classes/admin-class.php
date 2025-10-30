@@ -832,7 +832,7 @@ public function reconnectCustomer($disconnected_customer_id)
             $customer->contact,
             $customer->login_code,
             $customer->employer_id,
-            $customer->due_date,
+            date('Y-m-d', strtotime('+30 days')),
             $customer->remarks,
         ]);
 
@@ -2058,6 +2058,16 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 			return false;
 		}
 
+		private function getDisconnectedCustomerOriginalId($disconnected_customer_id)
+		{
+			$request = $this->dbh->prepare("SELECT original_id FROM disconnected_customers WHERE id = ?");
+			if ($request->execute([$disconnected_customer_id])) {
+				$result = $request->fetch();
+				return $result ? $result->original_id : null;
+			}
+			return null;
+		}
+
 		public function approveReconnectionRequest($id)
 		{
 			try {
@@ -2067,8 +2077,40 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 				if (!$request) {
 					throw new Exception("Reconnection request not found");
 				}
+				$original_customer_id = $this->getDisconnectedCustomerOriginalId($request->customer_id);
+				if (!$original_customer_id) {
+					throw new Exception("Original customer ID not found");
+				}
 
 				$this->reconnectCustomer($request->customer_id);
+
+				$paymentRequest = $this->dbh->prepare(
+					"INSERT INTO payments (customer_id, employer_id, r_month, amount, balance, status, p_date, payment_method, reference_number) VALUES (?, ?, ?, ?, 0, 'Paid', NOW(), ?, ?)"
+				);
+				$paymentRequest->execute([
+					$original_customer_id,
+					$request->employer_id,
+					'Reconnection Fee',
+					$request->amount,
+					$request->payment_method,
+					$request->reference_number
+				]);
+				$payment_id = $this->dbh->lastInsertId();
+
+				// Insert into payment_history
+				$historyRequest = $this->dbh->prepare(
+					"INSERT INTO payment_history (payment_id, customer_id, employer_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())"
+				);
+				$historyRequest->execute([
+					$payment_id,
+					$original_customer_id,
+					$request->employer_id,
+					'Reconnection Fee',
+					$request->amount,
+					$request->amount,
+					$request->payment_method,
+					$request->reference_number
+				]);
 
 				$updateRequest = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
 				$updateRequest->execute([$id]);
@@ -2104,5 +2146,31 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 				return $request->fetch();
 			}
 			return false;
+		}
+
+		public function getReconnectionPaymentById($id)
+		{
+			$request = $this->dbh->prepare("SELECT * FROM reconnection_requests WHERE id = ?");
+			if ($request->execute([$id])) {
+				return $request->fetch();
+			}
+			return false;
+		}
+
+		public function approveReconnectionPayment($id)
+		{
+			$request = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
+			if ($request->execute([$id])) {
+				$reconnection_request = $this->getReconnectionPaymentById($id);
+				$this->reconnectCustomer($reconnection_request->customer_id);
+				return true;
+			}
+			return false;
+		}
+
+		public function rejectReconnectionPayment($id)
+		{
+			$request = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'rejected' WHERE id = ?");
+			return $request->execute([$id]);
 		}
 	}
