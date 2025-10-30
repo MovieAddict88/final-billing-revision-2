@@ -17,7 +17,7 @@ if (!isset($_GET['id'])) {
 
 $request_id = $_GET['id'];
 $payment = $admins->getReconnectionPaymentById($request_id);
-$customer = $admins->getCustomerInfo($payment->customer_id);
+$customer = $admins->getDisconnectedCustomerInfo($payment->customer_id);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['approve'])) {
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <p><strong>Contact:</strong> <?php echo $customer->contact; ?></p>
                     <hr>
                     <h4>Payment Information</h4>
-                    <p><strong>Amount Paid:</strong> <?php echo number_format((float)$payment->amount_paid, 2); ?></p>
+                    <p><strong>Amount Paid:</strong> <?php echo number_format((float)$payment->amount, 2); ?></p>
                     <p><strong>Payment Method:</strong> <?php echo $payment->payment_method; ?></p>
                     <?php if (in_array($payment->payment_method, ['GCash','PayMaya']) && !empty($payment->account_number)) : ?>
                         <p><strong>Account Number:</strong> <?php echo htmlspecialchars($payment->account_number); ?></p>
