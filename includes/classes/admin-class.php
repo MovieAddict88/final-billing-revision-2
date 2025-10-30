@@ -832,7 +832,7 @@ public function reconnectCustomer($disconnected_customer_id)
             $customer->contact,
             $customer->login_code,
             $customer->employer_id,
-            $customer->due_date,
+            date('Y-m-d', strtotime('+30 days')),
             $customer->remarks,
         ]);
 
@@ -2104,5 +2104,31 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 				return $request->fetch();
 			}
 			return false;
+		}
+
+		public function getReconnectionPaymentById($id)
+		{
+			$request = $this->dbh->prepare("SELECT * FROM reconnection_requests WHERE id = ?");
+			if ($request->execute([$id])) {
+				return $request->fetch();
+			}
+			return false;
+		}
+
+		public function approveReconnectionPayment($id)
+		{
+			$request = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'approved' WHERE id = ?");
+			if ($request->execute([$id])) {
+				$reconnection_request = $this->getReconnectionPaymentById($id);
+				$this->reconnectCustomer($reconnection_request->customer_id);
+				return true;
+			}
+			return false;
+		}
+
+		public function rejectReconnectionPayment($id)
+		{
+			$request = $this->dbh->prepare("UPDATE reconnection_requests SET status = 'rejected' WHERE id = ?");
+			return $request->execute([$id]);
 		}
 	}
