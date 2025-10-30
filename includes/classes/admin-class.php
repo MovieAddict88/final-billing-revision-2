@@ -832,7 +832,7 @@ public function reconnectCustomer($disconnected_customer_id)
             $customer->contact,
             $customer->login_code,
             $customer->employer_id,
-            $customer->due_date,
+            date('Y-m-d', strtotime('+30 days')),
             $customer->remarks,
         ]);
 
