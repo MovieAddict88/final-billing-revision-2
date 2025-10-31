@@ -60,7 +60,7 @@ if (isset($results) && sizeof($results) > 0) {
                 <?php
                 $reconnection_request = $admins->getPendingReconnectionRequest($result->id);
                 if ($reconnection_request) { ?>
-                    <a href="view_payment.php?id=<?= $reconnection_request->id ?>" class="btn btn-info">View Request</a>
+                    <a href="view_reconnection_payment.php?id=<?= $reconnection_request->id ?>" class="btn btn-info">View Request</a>
                 <?php } else { ?>
                     <a href="reconnection_payment.php?customer=<?= $result->id ?>" class="btn btn-warning">Request Reconnection</a>
                 <?php } ?>

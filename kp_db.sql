@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: sql100.byetcluster.com
--- Generation Time: Oct 30, 2025 at 06:38 AM
+-- Generation Time: Oct 30, 2025 at 09:37 PM
 -- Server version: 10.6.22-MariaDB
 -- PHP Version: 7.2.22
 
@@ -93,6 +93,22 @@ CREATE TABLE `customers` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `disconnected_billings`
+--
+
+CREATE TABLE `disconnected_billings` (
+  `id` int(10) NOT NULL,
+  `customer_id` int(10) NOT NULL,
+  `bill_id` varchar(255) NOT NULL,
+  `bill_month` varchar(255) NOT NULL,
+  `Discount` int(11) NOT NULL DEFAULT 0,
+  `bill_amount` int(11) NOT NULL,
+  `paid_on` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `disconnected_customers`
 --
 
@@ -115,6 +131,68 @@ CREATE TABLE `disconnected_customers` (
   `disconnected_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `disconnected_by` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `disconnected_payments`
+--
+
+CREATE TABLE `disconnected_payments` (
+  `id` int(10) NOT NULL,
+  `customer_id` int(10) NOT NULL,
+  `employer_id` int(11) DEFAULT NULL,
+  `package_id` int(11) DEFAULT NULL,
+  `r_month` varchar(255) NOT NULL,
+  `amount` int(10) NOT NULL,
+  `balance` decimal(10,2) DEFAULT 0.00,
+  `g_date` timestamp NOT NULL DEFAULT current_timestamp(),
+  `p_date` timestamp NULL DEFAULT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'Unpaid',
+  `payment_method` varchar(50) DEFAULT NULL,
+  `reference_number` varchar(255) DEFAULT NULL,
+  `gcash_name` varchar(255) DEFAULT NULL,
+  `gcash_number` varchar(255) DEFAULT NULL,
+  `screenshot` varchar(255) DEFAULT NULL,
+  `payment_timestamp` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+--
+-- Dumping data for table `disconnected_payments`
+--
+
+INSERT INTO `disconnected_payments` (`id`, `customer_id`, `employer_id`, `package_id`, `r_month`, `amount`, `balance`, `g_date`, `p_date`, `status`, `payment_method`, `reference_number`, `gcash_name`, `gcash_number`, `screenshot`, `payment_timestamp`) VALUES
+(27, 16, 37, NULL, 'October', 800, '300.00', '2025-10-31 01:17:04', '2025-10-31 01:17:51', 'Unpaid', 'Manual', 'Manual', NULL, NULL, NULL, '2025-10-31 01:17:00'),
+(28, 17, 37, NULL, 'October', 2000, '1200.00', '2025-10-31 01:29:05', '2025-10-31 01:30:11', 'Unpaid', 'Manual', 'nxnx', NULL, NULL, NULL, '2025-10-30 22:29:00');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `disconnected_payment_history`
+--
+
+CREATE TABLE `disconnected_payment_history` (
+  `id` int(11) NOT NULL,
+  `payment_id` int(10) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `employer_id` int(11) DEFAULT NULL,
+  `package_id` int(11) DEFAULT NULL,
+  `r_month` varchar(255) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `paid_amount` decimal(10,2) NOT NULL,
+  `balance_after` decimal(10,2) NOT NULL,
+  `payment_method` varchar(50) DEFAULT NULL,
+  `reference_number` varchar(255) DEFAULT NULL,
+  `paid_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+--
+-- Dumping data for table `disconnected_payment_history`
+--
+
+INSERT INTO `disconnected_payment_history` (`id`, `payment_id`, `customer_id`, `employer_id`, `package_id`, `r_month`, `amount`, `paid_amount`, `balance_after`, `payment_method`, `reference_number`, `paid_at`) VALUES
+(18, 27, 16, 37, 1, 'October', '800.00', '500.00', '300.00', 'Manual', 'Manual', '2025-10-31 01:17:00'),
+(20, 28, 17, 37, 2, 'October', '2000.00', '800.00', '1200.00', 'Manual', 'nxnx', '2025-10-30 22:29:00');
 
 -- --------------------------------------------------------
 
@@ -178,7 +256,8 @@ CREATE TABLE `kp_user` (
 INSERT INTO `kp_user` (`user_id`, `user_name`, `user_pwd`, `full_name`, `email`, `contact`, `address`, `c_date`, `authentication`, `role`, `location`, `profile_pic`) VALUES
 (32, 'moshiur', '$2y$10$Xk8TYun1Crr0gIS960sSCeh7rfXfQfK2VJ3rJ7SThN/6cehlop35O', 'Moshiur Rahman', 'unimrgm@gmail.com', '01719454658', 'Bogra', '2017-10-21 20:39:51', 0, 'admin', NULL, NULL),
 (33, 'misu', '$2y$10$xuIQ8LSURAJbGj8dD8Wr9.0PzbPq2qUvaLjmSwMh/5xEY.SHeKYnS', 'Mushfiqur Rahman', 'misu@gmail.com', '01719454658', 'Bogra', '2017-10-22 07:29:55', 0, 'admin', NULL, NULL),
-(34, 'admin', '$2y$10$51/xhfZqmMt6pr9HhXfZB.Punql5srC5vXtOEradf0Cs5Dg/FzHYy', 'Mr Admin', 'admin@netwaybd.com', '051-56565', 'Netway', '2017-10-23 15:28:31', 0, 'admin', NULL, NULL);
+(34, 'admin', '$2y$10$51/xhfZqmMt6pr9HhXfZB.Punql5srC5vXtOEradf0Cs5Dg/FzHYy', 'Mr Admin', 'admin@netwaybd.com', '051-56565', 'Netway', '2017-10-23 15:28:31', 0, 'admin', NULL, NULL),
+(37, 'Ronald', '$2y$10$YOjitQc0vM39hWGuGbYyceqDOCzzDMnJUL9kX/wUuAu.6fd1w.tty', 'Fagmmmu', 'ronatorrejos@gmail.com', '09663016917', 'Zone 9, Bonbon', '2025-10-30 22:15:11', 0, 'employer', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -403,13 +482,13 @@ ALTER TABLE `cash_expanse`
 -- AUTO_INCREMENT for table `customers`
 --
 ALTER TABLE `customers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 
 --
 -- AUTO_INCREMENT for table `disconnected_customers`
 --
 ALTER TABLE `disconnected_customers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
 
 --
 -- AUTO_INCREMENT for table `kp_category`
@@ -427,7 +506,7 @@ ALTER TABLE `kp_products`
 -- AUTO_INCREMENT for table `kp_user`
 --
 ALTER TABLE `kp_user`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=37;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
 
 --
 -- AUTO_INCREMENT for table `packages`
@@ -439,13 +518,13 @@ ALTER TABLE `packages`
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `id` int(10) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(10) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
 -- AUTO_INCREMENT for table `payment_history`
 --
 ALTER TABLE `payment_history`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
 
 --
 -- AUTO_INCREMENT for table `product`
@@ -457,7 +536,7 @@ ALTER TABLE `product`
 -- AUTO_INCREMENT for table `reconnection_requests`
 --
 ALTER TABLE `reconnection_requests`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
