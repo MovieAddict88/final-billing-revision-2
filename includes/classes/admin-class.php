@@ -2097,6 +2097,17 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 				]);
 				$payment_id = $this->dbh->lastInsertId();
 
+				// Insert into billings (for invoice/ledger)
+				$billingRequest = $this->dbh->prepare(
+					"INSERT INTO billings (customer_id, bill_id, bill_month, discount, bill_amount) VALUES (?, ?, ?, 0, ?)"
+				);
+				$billingRequest->execute([
+					$original_customer_id,
+					$payment_id,
+					'Reconnection Fee',
+					$request->amount
+				]);
+
 				// Insert into payment_history
 				$historyRequest = $this->dbh->prepare(
 					"INSERT INTO payment_history (payment_id, customer_id, employer_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())"
