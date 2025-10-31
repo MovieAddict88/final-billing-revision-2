@@ -2084,12 +2084,17 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 
 				$this->reconnectCustomer($request->customer_id);
 
+				// Fetch reconnected customer to get package_id
+				$customer = $this->getCustomerInfo($original_customer_id);
+				$package_id = $customer ? $customer->package_id : null;
+
 				$paymentRequest = $this->dbh->prepare(
-					"INSERT INTO payments (customer_id, employer_id, r_month, amount, balance, status, p_date, payment_method, reference_number) VALUES (?, ?, ?, ?, 0, 'Paid', NOW(), ?, ?)"
+					"INSERT INTO payments (customer_id, employer_id, package_id, r_month, amount, balance, status, p_date, payment_method, reference_number) VALUES (?, ?, ?, ?, ?, 0, 'Paid', NOW(), ?, ?)"
 				);
 				$paymentRequest->execute([
 					$original_customer_id,
 					$request->employer_id,
+					$package_id,
 					'Reconnection Fee',
 					$request->amount,
 					$request->payment_method,
@@ -2110,12 +2115,13 @@ public function fetchCustomersPage($offset = 0, $limit = 10, $query = null)
 
 				// Insert into payment_history
 				$historyRequest = $this->dbh->prepare(
-					"INSERT INTO payment_history (payment_id, customer_id, employer_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())"
+					"INSERT INTO payment_history (payment_id, customer_id, employer_id, package_id, r_month, amount, paid_amount, balance_after, payment_method, reference_number, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())"
 				);
 				$historyRequest->execute([
 					$payment_id,
 					$original_customer_id,
 					$request->employer_id,
+					$package_id,
 					'Reconnection Fee',
 					$request->amount,
 					$request->amount,
