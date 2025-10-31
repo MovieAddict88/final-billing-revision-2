@@ -47,27 +47,58 @@ $daily_rate = $monthly_fee / $days_in_month;
 // Calculate overdue consumption for the period
 $overdue_consumption = $overdue_days * $daily_rate;
 
-// Get outstanding balance (remaining balance from previous bills)
-$outstanding_balance = (float)$customer->balance;
+// Get outstanding balance - FIXED: Get from disconnected payments table
+$outstanding_balance = 0.00;
+
+// Query to get the actual outstanding balance from disconnected_payments table
+$request = $dbh->prepare("
+    SELECT COALESCE(SUM(balance), 0) as total_outstanding 
+    FROM disconnected_payments 
+    WHERE customer_id = ? AND status = 'Unpaid'
+");
+if ($request->execute([$customer->original_id])) {
+    $result = $request->fetch();
+    $outstanding_balance = (float)$result->total_outstanding;
+}
+
+// If no balance found in disconnected_payments, try to get from the customer object
+if ($outstanding_balance == 0 && isset($customer->balance)) {
+    $outstanding_balance = (float)$customer->balance;
+}
 
 // Calculate total due: outstanding balance + overdue consumption
 $total_due = $outstanding_balance + $overdue_consumption;
 
-// Minimum payment must cover at least the outstanding balance
-$minimum_payment = $outstanding_balance;
+// Set default payment option
+$payment_option = 'both'; // Default to both
+$calculated_amount = $total_due;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $employer_id = $_SESSION['user_id'];
     $amount = (float)$_POST['amount'];
     $reference_number = $_POST['reference_number'];
     $payment_method = $_POST['payment_method'];
+    $payment_option = $_POST['payment_option'];
     $screenshot = isset($_FILES['screenshot']) ? $_FILES['screenshot'] : null;
     $payment_date = $_POST['payment_date'];
     $payment_time = $_POST['payment_time'];
     
-    // Validate payment amount
-    if ($amount < $outstanding_balance) {
-        $error_message = "Payment amount must be at least the outstanding balance of ₱" . number_format($outstanding_balance, 2);
+    // Validate payment amount based on selected option
+    $min_amount = 0;
+    switch ($payment_option) {
+        case 'outstanding':
+            $min_amount = $outstanding_balance;
+            break;
+        case 'overdue':
+            $min_amount = $overdue_consumption;
+            break;
+        case 'both':
+            $min_amount = $total_due;
+            break;
+    }
+    
+    if ($amount < $min_amount) {
+        $error_message = "Payment amount must be at least ₱" . number_format($min_amount, 2) . " for the selected option.";
     } elseif ($amount > ($total_due * 3)) {
         $error_message = "Payment amount seems too high. Please verify the amount.";
     } else {
@@ -79,6 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_message = "Failed to process reconnection request. Please try again.";
         }
     }
+} else {
+    // Set initial calculated amount based on default option
+    $calculated_amount = $total_due;
 }
 ?>
 
@@ -104,6 +138,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 20px;
+        }
+        .payment-option-card {
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .payment-option-card:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .payment-option-card.selected {
+            border-color: #007bff;
+            background-color: #e7f3ff;
+        }
+        .payment-option-card input[type="radio"] {
+            margin-right: 10px;
         }
     </style>
 </head>
@@ -167,17 +220,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <h5 class="mb-0"><strong>Total Amount Due:</strong></h5>
                             <h5 class="mb-0"><strong>₱<?php echo number_format($total_due, 2); ?></strong></h5>
                         </div>
+                    </div>
+
+                    <!-- Payment Options -->
+                    <div class="mb-4">
+                        <h5>Select Payment Option:</h5>
                         
-                        <?php if ($outstanding_balance > 0): ?>
-                            <div class="row mt-2">
-                                <div class="col-12">
-                                    <small class="text-warning">
-                                        <i class="bi bi-exclamation-triangle"></i>
-                                        <strong>Minimum payment required:</strong> ₱<?php echo number_format($outstanding_balance, 2); ?> (to cover outstanding balance)
-                                    </small>
-                                </div>
-                            </div>
-                        <?php endif; ?>
+                        <div class="payment-option-card <?php echo $payment_option === 'outstanding' ? 'selected' : ''; ?>" onclick="selectPaymentOption('outstanding')">
+                            <label class="d-block mb-0">
+                                <input type="radio" name="payment_option" value="outstanding" <?php echo $payment_option === 'outstanding' ? 'checked' : ''; ?>>
+                                <strong>Outstanding Balance Only</strong> - ₱<?php echo number_format($outstanding_balance, 2); ?>
+                            </label>
+                            <small class="text-muted">Pay only the remaining balance from previous bills</small>
+                        </div>
+                        
+                        <div class="payment-option-card <?php echo $payment_option === 'overdue' ? 'selected' : ''; ?>" onclick="selectPaymentOption('overdue')">
+                            <label class="d-block mb-0">
+                                <input type="radio" name="payment_option" value="overdue" <?php echo $payment_option === 'overdue' ? 'checked' : ''; ?>>
+                                <strong>Overdue Consumption Only</strong> - ₱<?php echo number_format($overdue_consumption, 2); ?>
+                            </label>
+                            <small class="text-muted">Pay only for the overdue period consumption</small>
+                        </div>
+                        
+                        <div class="payment-option-card <?php echo $payment_option === 'both' ? 'selected' : ''; ?>" onclick="selectPaymentOption('both')">
+                            <label class="d-block mb-0">
+                                <input type="radio" name="payment_option" value="both" <?php echo $payment_option === 'both' ? 'checked' : ''; ?>>
+                                <strong>Both (Outstanding Balance + Overdue Consumption)</strong> - ₱<?php echo number_format($total_due, 2); ?>
+                            </label>
+                            <small class="text-muted">Pay both outstanding balance and overdue consumption</small>
+                        </div>
                     </div>
 
                     <!-- Payment Form -->
@@ -189,13 +260,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="form-group mb-3">
                                     <label for="amount" class="form-label">Payment Amount *</label>
                                     <input type="number" name="amount" id="amount" class="form-control" 
-                                           step="0.01" min="<?php echo $outstanding_balance; ?>" 
+                                           step="0.01" min="0" 
                                            max="<?php echo $total_due * 3; ?>" 
-                                           value="<?php echo $total_due; ?>" required>
+                                           value="<?php echo $calculated_amount; ?>" required>
                                     <div class="form-text">
                                         <small>
-                                            <strong>Minimum:</strong> ₱<?php echo number_format($outstanding_balance, 2); ?><br>
-                                            <strong>Recommended:</strong> ₱<?php echo number_format($total_due, 2); ?>
+                                            <strong id="min-amount-text">Minimum: ₱<?php echo number_format($total_due, 2); ?></strong><br>
+                                            <strong>Recommended: ₱<?php echo number_format($total_due, 2); ?></strong>
                                         </small>
                                     </div>
                                 </div>
@@ -284,6 +355,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// PHP variables passed to JavaScript
+const outstandingBalance = <?php echo $outstanding_balance; ?>;
+const overdueConsumption = <?php echo $overdue_consumption; ?>;
+const totalDue = <?php echo $total_due; ?>;
+
 document.addEventListener('DOMContentLoaded', function() {
     const amountInput = document.getElementById('amount');
     const paymentMethod = document.getElementById('payment_method');
@@ -291,24 +367,102 @@ document.addEventListener('DOMContentLoaded', function() {
     const walletAccountName = document.getElementById('wallet_account_name');
     const walletAccountNumber = document.getElementById('wallet_account_number');
     const paymentForm = document.getElementById('paymentForm');
+    const minAmountText = document.getElementById('min-amount-text');
+    const paymentOptions = document.querySelectorAll('input[name="payment_option"]');
     
-    const outstandingBalance = <?php echo $outstanding_balance; ?>;
-    const totalDue = <?php echo $total_due; ?>;
+    // Set initial minimum amount text
+    updateMinAmountText();
+
+    // Payment option selection
+    function selectPaymentOption(option) {
+        document.querySelectorAll('.payment-option-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        const selectedCard = document.querySelector(`.payment-option-card input[value="${option}"]`).closest('.payment-option-card');
+        selectedCard.classList.add('selected');
+        
+        document.querySelector(`input[name="payment_option"][value="${option}"]`).checked = true;
+        
+        // Update amount field based on selection
+        let newAmount = 0;
+        switch (option) {
+            case 'outstanding':
+                newAmount = outstandingBalance;
+                break;
+            case 'overdue':
+                newAmount = overdueConsumption;
+                break;
+            case 'both':
+                newAmount = totalDue;
+                break;
+        }
+        
+        amountInput.value = newAmount.toFixed(2);
+        updateMinAmountText();
+        validateAmount();
+    }
+
+    // Update minimum amount text based on selected option
+    function updateMinAmountText() {
+        const selectedOption = document.querySelector('input[name="payment_option"]:checked').value;
+        let minAmount = 0;
+        
+        switch (selectedOption) {
+            case 'outstanding':
+                minAmount = outstandingBalance;
+                break;
+            case 'overdue':
+                minAmount = overdueConsumption;
+                break;
+            case 'both':
+                minAmount = totalDue;
+                break;
+        }
+        
+        minAmountText.textContent = `Minimum: ₱${minAmount.toFixed(2)}`;
+    }
 
     // Amount validation
-    amountInput.addEventListener('input', function() {
-        const enteredAmount = parseFloat(this.value) || 0;
+    function validateAmount() {
+        const enteredAmount = parseFloat(amountInput.value) || 0;
+        const selectedOption = document.querySelector('input[name="payment_option"]:checked').value;
         
-        if (enteredAmount < outstandingBalance) {
-            this.setCustomValidity(`Payment must be at least ₱${outstandingBalance.toFixed(2)} to cover outstanding balance.`);
-            this.classList.add('is-invalid');
-        } else if (enteredAmount > totalDue * 3) {
-            this.setCustomValidity('Payment amount seems too high. Please verify.');
-            this.classList.add('is-invalid');
-        } else {
-            this.setCustomValidity('');
-            this.classList.remove('is-invalid');
+        let minAmount = 0;
+        switch (selectedOption) {
+            case 'outstanding':
+                minAmount = outstandingBalance;
+                break;
+            case 'overdue':
+                minAmount = overdueConsumption;
+                break;
+            case 'both':
+                minAmount = totalDue;
+                break;
         }
+        
+        if (enteredAmount < minAmount) {
+            amountInput.setCustomValidity(`Payment must be at least ₱${minAmount.toFixed(2)} for the selected option.`);
+            amountInput.classList.add('is-invalid');
+            return false;
+        } else if (enteredAmount > totalDue * 3) {
+            amountInput.setCustomValidity('Payment amount seems too high. Please verify.');
+            amountInput.classList.add('is-invalid');
+            return false;
+        } else {
+            amountInput.setCustomValidity('');
+            amountInput.classList.remove('is-invalid');
+            return true;
+        }
+    }
+
+    // Event listeners
+    amountInput.addEventListener('input', validateAmount);
+    
+    paymentOptions.forEach(option => {
+        option.addEventListener('change', function() {
+            selectPaymentOption(this.value);
+        });
     });
 
     // Show/hide wallet fields based on payment method
@@ -328,22 +482,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Form submission validation
     paymentForm.addEventListener('submit', function(e) {
-        const enteredAmount = parseFloat(amountInput.value) || 0;
-        
-        if (enteredAmount < outstandingBalance) {
+        if (!validateAmount()) {
             e.preventDefault();
-            alert(`Error: Payment amount must be at least ₱${outstandingBalance.toFixed(2)} to cover the outstanding balance.`);
+            const selectedOption = document.querySelector('input[name="payment_option"]:checked').value;
+            let minAmount = 0;
+            
+            switch (selectedOption) {
+                case 'outstanding':
+                    minAmount = outstandingBalance;
+                    break;
+                case 'overdue':
+                    minAmount = overdueConsumption;
+                    break;
+                case 'both':
+                    minAmount = totalDue;
+                    break;
+            }
+            
+            alert(`Error: Payment amount must be at least ₱${minAmount.toFixed(2)} for the selected option.`);
             amountInput.focus();
             return false;
         }
         
-        if (enteredAmount > totalDue * 3) {
-            e.preventDefault();
-            alert('Error: Payment amount seems too high. Please verify the amount.');
-            amountInput.focus();
-            return false;
-        }
-
         // Confirm submission
         if (!confirm('Are you sure you want to submit this reconnection request?')) {
             e.preventDefault();
@@ -358,6 +518,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Trigger payment method change on page load
     paymentMethod.dispatchEvent(new Event('change'));
+    
+    // Initialize with default selection
+    selectPaymentOption('<?php echo $payment_option; ?>');
 });
 </script>
 </body>
